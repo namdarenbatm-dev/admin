@@ -1,5 +1,5 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
-const cors = {"Access-Control-Allow-Origin":"*","Access-Control-Allow-Headers":"authorization, apikey, content-type","Access-Control-Allow-Methods":"POST, OPTIONS"};
+const cors = {"Access-Control-Allow-Origin":"https://namdarenbatm-dev.github.io","Access-Control-Allow-Headers":"authorization, apikey, content-type","Access-Control-Allow-Methods":"POST, OPTIONS"};
 const reply=(data:unknown,status=200)=>new Response(JSON.stringify(data),{status,headers:{...cors,"Content-Type":"application/json"}});
 function keys(name:string,legacy:string){const raw=Deno.env.get(name);if(raw){try{return JSON.parse(raw).default as string}catch{}}return Deno.env.get(legacy)||""}
 const url=Deno.env.get("SUPABASE_URL")||"";
@@ -29,8 +29,9 @@ Deno.serve(async(req:Request)=>{
   if(status==="approved"){patch.approved_by=authData.user.id;patch.approved_at=new Date().toISOString()}
   if(status==="paid"){patch.paid_by=authData.user.id;patch.paid_at=new Date().toISOString()}
   if(status==="void")patch.void_reason=String(body.reason||"باطل‌شده توسط مدیر");
-  const {data:changed,error:writeError}=await admin.from("reward_calculation_runs").update(patch).eq("id",id).select("id,status,approved_at,paid_at").single();
+  const {data:changed,error:writeError}=await admin.from("reward_calculation_runs").update(patch).eq("id",id).eq("status",run.status).select("id,status,approved_at,paid_at").single();
   if(writeError)throw writeError;
+  if(!changed)return reply({error:"Run status changed concurrently; refresh and retry"},409);
   return reply({ok:true,run:changed});
  }catch(e){return reply({error:e instanceof Error?e.message:"Unexpected error"},500)}
 });
