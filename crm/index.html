@@ -141,7 +141,7 @@ renderBrokers();
    <label style="font-size:12px">رمز عبور<input id="sniPassword" type="password" required autocomplete="current-password" style="display:block;width:100%;padding:12px;border:1px solid #dce3ed;border-radius:9px;margin-top:6px"></label>
    <button type="submit" style="background:#3268e8;color:#fff;border:0;padding:12px;border-radius:9px;font-weight:700">ورود امن</button>
   </form>
-  <div style="font-size:11px;line-height:1.9;color:#8a94a6;margin-top:14px">حساب اولیه باید در بخش Authentication پروژه Supabase ساخته و پروفایل آن در جدول profiles با نقش super_admin ثبت شود.</div>
+  <div style="font-size:11px;line-height:1.9;color:#8a94a6;margin-top:14px">اولین کاربر سازمانی را در بخش Authentication پروژه Supabase ایجاد کنید. پروفایل به‌صورت خودکار ساخته می‌شود و اولین ورود، در صورت نبود مدیر قبلی، نقش super_admin را فعال می‌کند.</div>
  </div>
 </div>
 <div id="sniSessionBar" style="position:fixed;top:10px;left:12px;z-index:1000;display:none;gap:8px;align-items:center;background:#fff;border:1px solid #e7ecf3;padding:7px 10px;border-radius:10px;font-size:11px;box-shadow:0 4px 16px #18284412">
@@ -168,12 +168,13 @@ renderBrokers();
  const acceptSession=async(session)=>{
   if(!session){showGate();return}
   const {data,error}=await client.from('profiles').select('id,full_name,role,is_active').eq('id',session.user.id).maybeSingle();
-  if(error||!data||!data.is_active){await client.auth.signOut();showGate('برای این حساب پروفایل فعال CRM تعریف نشده است. مدیر سامانه باید رکورد profiles را ایجاد یا فعال کند.');return}
-  if(data.role==='viewer'){
+  if(error||!data||!data.is_active){await client.auth.signOut();showGate('پروفایل فعال برای این حساب پیدا نشد.');return}
+  let profile=data;
+  if(profile.role==='viewer'){
    const {error:bootError}=await client.rpc('bootstrap_first_admin');
-   if(!bootError){const refreshed=await client.from('profiles').select('id,full_name,role,is_active').eq('id',session.user.id).single();if(refreshed.data)data=refreshed.data;}
+   if(!bootError){const refreshed=await client.from('profiles').select('id,full_name,role,is_active').eq('id',session.user.id).single();if(refreshed.data)profile=refreshed.data;}
   }
-  window.sniProfile=data;gate.style.display='none';sessionBar.style.display='flex';document.getElementById('sniSessionEmail').textContent=session.user.email+' · '+data.role;
+  window.sniProfile=profile;gate.style.display='none';sessionBar.style.display='flex';document.getElementById('sniSessionEmail').textContent=session.user.email+' · '+profile.role;
   await loadBrokerData();
  };
  document.getElementById('sniLoginForm').addEventListener('submit',async e=>{
