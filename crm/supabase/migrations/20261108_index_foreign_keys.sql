@@ -1,0 +1,26 @@
+-- Performance indexes for SNI CRM foreign-key access paths
+create index if not exists idx_audit_logs_actor_id on public.audit_logs(actor_id);
+create index if not exists idx_brokers_created_by on public.brokers(created_by);
+create index if not exists idx_brokers_region_id on public.brokers(region_id);
+create index if not exists idx_commission_ledger_approved_by on public.commission_ledger(approved_by);
+create index if not exists idx_commission_ledger_rule_id on public.commission_ledger(rule_id);
+create index if not exists idx_leads_broker_id on public.leads(broker_id);
+create index if not exists idx_leads_created_by on public.leads(created_by);
+create index if not exists idx_leads_region_id on public.leads(region_id);
+create index if not exists idx_merchants_created_by on public.merchants(created_by);
+create index if not exists idx_profiles_broker_id on public.profiles(broker_id);
+create index if not exists idx_regions_manager_id on public.regions(manager_id);
+create index if not exists idx_sales_points_broker_id on public.sales_points(broker_id);
+create index if not exists idx_sales_points_region_id on public.sales_points(region_id);
+create index if not exists idx_targets_broker_id on public.targets(broker_id);
+create index if not exists idx_targets_created_by on public.targets(created_by);
+create index if not exists idx_targets_region_id on public.targets(region_id);
+create index if not exists idx_targets_sales_point_id on public.targets(sales_point_id);
+create index if not exists idx_tasks_broker_id on public.tasks(broker_id);
+create index if not exists idx_tasks_created_by on public.tasks(created_by);
+create index if not exists idx_tasks_terminal_id on public.tasks(terminal_id);
+create index if not exists idx_terminal_history_changed_by on public.terminal_status_history(changed_by);
+create index if not exists idx_terminal_history_terminal_id on public.terminal_status_history(terminal_id);
+create index if not exists idx_terminals_created_by on public.terminals(created_by);
+create index if not exists idx_terminals_sales_point_id on public.terminals(sales_point_id);
+create index if not exists idx_workflow_rules_created_by on public.workflow_rules(created_by);
