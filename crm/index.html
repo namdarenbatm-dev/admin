@@ -131,4 +131,75 @@ function removeBroker(code){brokers=brokers.filter(b=>b.code!==decodeURIComponen
 function exportBrokers(){let csv='نام,کد,مسئول,تلفن,منطقه,وضعیت\n'+brokers.map(b=>[b.name,b.code,b.manager,b.phone,b.region,b.status].map(x=>'"'+String(x||'').replace(/"/g,'""')+'"').join(',')).join('\n');let a=document.createElement('a');a.href=URL.createObjectURL(new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8'}));a.download='brokers.csv';a.click();URL.revokeObjectURL(a.href)}
 let toastTimer;function toast(msg){let t=document.getElementById('toast');t.textContent=msg;t.style.opacity=1;clearTimeout(toastTimer);toastTimer=setTimeout(()=>t.style.opacity=0,2600)}
 renderBrokers();
-</script></body></html>
+</script>
+<div id="sniAuthGate" style="position:fixed;inset:0;z-index:9999;background:rgba(8,18,36,.82);display:none;align-items:center;justify-content:center;padding:20px">
+ <div style="width:min(420px,100%);background:#fff;border-radius:18px;padding:26px;box-shadow:0 25px 80px #0004">
+  <div style="font-size:20px;font-weight:800;color:#101b32;margin-bottom:8px">ورود به SNI CRM</div>
+  <p id="sniAuthMessage" style="font-size:12px;line-height:2;color:#718096">برای دسترسی به اطلاعات شبکه، وارد حساب سازمانی خود شوید.</p>
+  <form id="sniLoginForm" style="display:grid;gap:12px;margin-top:18px">
+   <label style="font-size:12px">ایمیل سازمانی<input id="sniEmail" type="email" required autocomplete="username" style="display:block;width:100%;padding:12px;border:1px solid #dce3ed;border-radius:9px;margin-top:6px"></label>
+   <label style="font-size:12px">رمز عبور<input id="sniPassword" type="password" required autocomplete="current-password" style="display:block;width:100%;padding:12px;border:1px solid #dce3ed;border-radius:9px;margin-top:6px"></label>
+   <button type="submit" style="background:#3268e8;color:#fff;border:0;padding:12px;border-radius:9px;font-weight:700">ورود امن</button>
+  </form>
+  <div style="font-size:11px;line-height:1.9;color:#8a94a6;margin-top:14px">حساب اولیه باید در بخش Authentication پروژه Supabase ساخته و پروفایل آن در جدول profiles با نقش super_admin ثبت شود.</div>
+ </div>
+</div>
+<div id="sniSessionBar" style="position:fixed;top:10px;left:12px;z-index:1000;display:none;gap:8px;align-items:center;background:#fff;border:1px solid #e7ecf3;padding:7px 10px;border-radius:10px;font-size:11px;box-shadow:0 4px 16px #18284412">
+ <span id="sniSessionEmail"></span><button id="sniLogout" class="btn secondary small">خروج</button>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="./config.js"></script>
+<script>
+(async function(){
+ const gate=document.getElementById('sniAuthGate'), msg=document.getElementById('sniAuthMessage');
+ const sessionBar=document.getElementById('sniSessionBar');
+ const cfg=window.SNI_SUPABASE_CONFIG;
+ if(!cfg||!window.supabase){gate.style.display='flex';msg.textContent='اتصال به سرویس احراز هویت برقرار نشد. اتصال اینترنت و تنظیمات پروژه را بررسی کنید.';return}
+ const client=window.supabase.createClient(cfg.url,cfg.publishableKey);
+ window.sniClient=client; window.sniProfile=null;
+ const showGate=(text)=>{msg.textContent=text||'برای دسترسی به اطلاعات شبکه، وارد حساب سازمانی خود شوید.';gate.style.display='flex';sessionBar.style.display='none'};
+ const loadBrokerData=async()=>{
+  const {data,error}=await client.from('brokers').select('id,code,legal_name,manager_name,phone,region_name,status').order('created_at',{ascending:false});
+  if(error){toast('خطا در دریافت کارگزاران: '+error.message);return}
+  brokers=(data||[]).map(x=>({id:x.id,name:x.legal_name,code:x.code,manager:x.manager_name||'',phone:x.phone||'',region:x.region_name||'',status:x.status==='active'?'فعال':'در انتظار'}));
+  renderBrokers();
+  const k=document.getElementById('kpiBrokers');if(k)k.textContent=String(brokers.length);
+ };
+ const acceptSession=async(session)=>{
+  if(!session){showGate();return}
+  const {data,error}=await client.from('profiles').select('id,full_name,role,is_active').eq('id',session.user.id).maybeSingle();
+  if(error||!data||!data.is_active){await client.auth.signOut();showGate('برای این حساب پروفایل فعال CRM تعریف نشده است. مدیر سامانه باید رکورد profiles را ایجاد یا فعال کند.');return}
+  window.sniProfile=data;gate.style.display='none';sessionBar.style.display='flex';document.getElementById('sniSessionEmail').textContent=session.user.email+' · '+data.role;
+  await loadBrokerData();
+ };
+ document.getElementById('sniLoginForm').addEventListener('submit',async e=>{
+  e.preventDefault();const btn=e.submitter;btn.disabled=true;btn.textContent='در حال ورود…';
+  const {data,error}=await client.auth.signInWithPassword({email:document.getElementById('sniEmail').value.trim(),password:document.getElementById('sniPassword').value});
+  btn.disabled=false;btn.textContent='ورود امن';
+  if(error){showGate('ورود ناموفق بود: '+error.message);return}
+  await acceptSession(data.session);
+ });
+ document.getElementById('sniLogout').onclick=async()=>{await client.auth.signOut();showGate('از حساب خارج شدید.')};
+ client.auth.onAuthStateChange((_event,session)=>{if(session) setTimeout(()=>acceptSession(session),0);else showGate()});
+ const {data:{session}}=await client.auth.getSession();await acceptSession(session);
+ window.openBrokerModal=function(){
+  const bg=document.getElementById('modal');
+  bg.innerHTML='<div class="modal"><div class="modal-head"><h3>ثبت کارگزار در پایگاه مرکزی</h3><button class="close" onclick="closeModal()">×</button></div><form id="brokerForm"><div class="form-grid"><div class="field full"><label>نام شرکت / کارگزار *</label><input name="name" required></div><div class="field"><label>کد کارگزار *</label><input name="code" required></div><div class="field"><label>نام مدیر / مسئول</label><input name="manager"></div><div class="field"><label>شماره تماس</label><input name="phone"></div><div class="field"><label>منطقه فعالیت</label><input name="region"></div><div class="field full"><label>وضعیت</label><select name="status"><option value="active">فعال</option><option value="pending">در انتظار</option></select></div></div><div class="modal-actions"><button type="button" class="btn secondary" onclick="closeModal()">انصراف</button><button class="btn" type="submit">ثبت در دیتابیس</button></div></form></div>';
+  bg.classList.add('show');
+  document.getElementById('brokerForm').onsubmit=async e=>{
+   e.preventDefault();const b=Object.fromEntries(new FormData(e.target));
+   const {error}=await client.from('brokers').insert({code:b.code.trim(),legal_name:b.name.trim(),manager_name:b.manager||null,phone:b.phone||null,region_name:b.region||null,status:b.status,created_by:window.sniProfile.id});
+   if(error){toast('ثبت انجام نشد: '+error.message);return}
+   closeModal();await loadBrokerData();logEvent('ایجاد رکورد','کارگزاران',b.name+' / '+b.code);toast('کارگزار در پایگاه مرکزی ثبت شد');
+  };
+ };
+ window.removeBroker=async function(code){
+  const b=brokers.find(x=>x.code===decodeURIComponent(code));if(!b)return;
+  if(!confirm('کارگزار از پایگاه مرکزی حذف شود؟'))return;
+  const {error}=await client.from('brokers').delete().eq('id',b.id);
+  if(error){toast('حذف انجام نشد: '+error.message);return}
+  await loadBrokerData();toast('کارگزار از پایگاه مرکزی حذف شد');
+ };
+})();
+</script>
+</body></html>
