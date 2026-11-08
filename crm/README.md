@@ -13,6 +13,8 @@ The CRM is deployed separately from the existing root website. The root `index.h
 - User profiles and invitation flow through the `crm-admin` Edge Function
 - Reward participants, referral hierarchy, first-purchase events, versioned rate configuration, calculation runs and immutable reward ledger
 - Reward approval/payment state transitions through the `reward-status` Edge Function
+- Duplicate approved/paid snapshots are blocked by a unique period constraint
+- Reward budgets and rates use the exact Reward Techno default configuration; direct/indirect network rewards are charged to the agent basket as in the reference model
 
 ## Reward rules carried over from Techno Reward
 - Two independent funding baskets: partner and agent.
