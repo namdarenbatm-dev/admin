@@ -100,7 +100,7 @@ async function importPage(){
   const file=el.querySelector('#sniCsv').files[0];if(!file){notify('ابتدا فایل را انتخاب کنید');return}
   const out=el.querySelector('#sniImportResult'),btn=el.querySelector('#sniImportBtn');btn.disabled=true;btn.textContent='در حال بررسی…';
   try{
-   const parsed=parseCSVRows((await file.text()).replace(/^\\uFEFF/,'').trim());
+   const parsed=parseCSVRows((await file.text()).replace(/^\uFEFF/,'').trim());
    if(parsed.length<2)throw new Error('فایل سرستون و حداقل یک ردیف داده ندارد.');
    const head=parsed.shift().map(x=>String(x).trim().toLowerCase());
    const required=['terminal_id','metric_date','transaction_count','transaction_amount','fee_amount'];
@@ -110,14 +110,14 @@ async function importPage(){
     if(vals.every(v=>String(v).trim()===''))return;
     const rowNo=i+2,o={};head.forEach((k,j)=>o[k]=String(vals[j]??'').trim());
     if(!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(o.terminal_id||'')){errors.push('ردیف '+rowNo+': شناسه پایانه UUID معتبر نیست.');return}
-    const dateParts=(o.metric_date||'').split('-').map(Number),validDate=/^\\d{4}-\\d{2}-\\d{2}$/.test(o.metric_date||'')&&dateParts.length===3&&new Date(Date.UTC(dateParts[0],dateParts[1]-1,dateParts[2])).toISOString().slice(0,10)===o.metric_date;if(!validDate){errors.push('ردیف '+rowNo+': تاریخ معتبر باید به شکل YYYY-MM-DD باشد.');return}
+    const dateParts=(o.metric_date||'').split('-').map(Number),validDate=/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(o.metric_date||'')&&dateParts.length===3&&new Date(Date.UTC(dateParts[0],dateParts[1]-1,dateParts[2])).toISOString().slice(0,10)===o.metric_date;if(!validDate){errors.push('ردیف '+rowNo+': تاریخ معتبر باید به شکل YYYY-MM-DD باشد.');return}
     const count=Number(o.transaction_count),amount=Number(o.transaction_amount),fee=Number(o.fee_amount);
     if(!Number.isInteger(count)||count<0||!Number.isFinite(amount)||amount<0||!Number.isFinite(fee)||fee<0){errors.push('ردیف '+rowNo+': مقادیر تعداد، مبلغ و کارمزد باید عدد نامنفی باشند.');return}
     const key=o.terminal_id+'|'+o.metric_date;if(seen.has(key)){errors.push('ردیف '+rowNo+': ترکیب پایانه و تاریخ در فایل تکراری است.');return}seen.add(key);
     data.push({terminal_id:o.terminal_id,metric_date:o.metric_date,transaction_count:count,transaction_amount:amount,fee_amount:fee,source:o.source||file.name});
    });
    if(data.length>1000)errors.push('تعداد ردیف‌ها بیش از سقف ۱۰۰۰ ردیف در هر بارگذاری است.');
-   if(errors.length){out.textContent='ثبت انجام نشد. خطاهای اعتبارسنجی ('+errors.length+'):\n'+errors.slice(0,40).join('\n')+(errors.length>40?'\\n… و '+(errors.length-40)+' خطای دیگر':'');return}
+   if(errors.length){out.textContent='ثبت انجام نشد. خطاهای اعتبارسنجی ('+errors.length+'):\n'+errors.slice(0,40).join('\n')+(errors.length>40?' | و '+(errors.length-40)+' خطای دیگر':'');return}
    const {error}=await window.sniClient.from('daily_transaction_metrics').upsert(data,{onConflict:'terminal_id,metric_date'});
    if(error)throw error;
    out.textContent='اعتبارسنجی موفق؛ '+data.length+' ردیف به‌صورت یکجا ثبت/به‌روزرسانی شد.';
