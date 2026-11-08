@@ -169,9 +169,7 @@ renderBrokers();
   if(!session){showGate();return}
   const {data,error}=await client.from('profiles').select('id,full_name,role,is_active').eq('id',session.user.id).maybeSingle();
   if(error||!data||!data.is_active){await client.auth.signOut();showGate('پروفایل فعال برای این حساب پیدا نشد.');return}
-  let profile=data;
-  if(profile.role==='viewer'){
-  }
+  const profile=data;
   window.sniProfile=profile;gate.style.display='none';sessionBar.style.display='flex';document.getElementById('sniSessionEmail').textContent=session.user.email+' · '+profile.role;
   await loadBrokerData();
  };
