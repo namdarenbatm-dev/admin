@@ -84,8 +84,8 @@ function parseCSVRows(input){
    else field+=ch;
   }else if(ch==='"'&&field===''){quoted=true}
   else if(ch===','){row.push(field);field=''}
-  else if(ch==='\\n'){row.push(field);rows.push(row);row=[];field=''}
-  else if(ch==='\\r'){}
+  else if(ch==='\n'){row.push(field);rows.push(row);row=[];field=''}
+  else if(ch==='\r'){}
   else field+=ch;
  }
  if(quoted)throw new Error('ساختار نقل‌قول در فایل CSV ناقص است.');
@@ -117,7 +117,7 @@ async function importPage(){
     data.push({terminal_id:o.terminal_id,metric_date:o.metric_date,transaction_count:count,transaction_amount:amount,fee_amount:fee,source:o.source||file.name});
    });
    if(data.length>1000)errors.push('تعداد ردیف‌ها بیش از سقف ۱۰۰۰ ردیف در هر بارگذاری است.');
-   if(errors.length){out.textContent='ثبت انجام نشد. خطاهای اعتبارسنجی ('+errors.length+'):\\n'+errors.slice(0,40).join('\\n')+(errors.length>40?'\\n… و '+(errors.length-40)+' خطای دیگر':'');return}
+   if(errors.length){out.textContent='ثبت انجام نشد. خطاهای اعتبارسنجی ('+errors.length+'):\n'+errors.slice(0,40).join('\n')+(errors.length>40?'\\n… و '+(errors.length-40)+' خطای دیگر':'');return}
    const {error}=await window.sniClient.from('daily_transaction_metrics').upsert(data,{onConflict:'terminal_id,metric_date'});
    if(error)throw error;
    out.textContent='اعتبارسنجی موفق؛ '+data.length+' ردیف به‌صورت یکجا ثبت/به‌روزرسانی شد.';
