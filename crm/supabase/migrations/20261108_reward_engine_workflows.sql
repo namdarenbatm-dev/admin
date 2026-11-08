@@ -286,3 +286,43 @@ begin
   execute format('create trigger %I_audit after insert or update or delete on public.%I for each row execute function public.audit_row_change()',t,t);
  end loop;
 end $$;
+
+
+-- Prevent duplicate approved/paid payouts for the same reporting snapshot.
+create unique index if not exists uq_reward_single_approved_period
+on public.reward_calculation_runs(period_start,period_end)
+where status in ('approved','paid');
+
+-- Harden workflow due-hour parsing: malformed JSON values fall back to 24 hours.
+create or replace function private.apply_workflow_event()
+returns trigger language plpgsql security definer set search_path=public,private,pg_temp
+as $$
+declare v_event text; v_payload jsonb; r record; v_task_title text; v_priority text; v_due_hours integer;
+begin
+ if tg_table_name='terminals' then
+  if tg_op='UPDATE' and old.lifecycle_status is distinct from new.lifecycle_status then
+   v_event:='terminal.status_changed'; v_payload:=jsonb_build_object('from_status',old.lifecycle_status,'to_status',new.lifecycle_status,'terminal_code',new.terminal_code);
+  else return new; end if;
+ elsif tg_table_name='leads' then
+  if tg_op='UPDATE' and old.stage is distinct from new.stage then
+   v_event:='lead.stage_changed'; v_payload:=jsonb_build_object('from_stage',old.stage,'to_stage',new.stage,'title',new.title);
+  else return new; end if;
+ else return new; end if;
+ insert into public.workflow_events(event_key,entity_type,entity_id,broker_id,payload) values(v_event,tg_table_name,new.id,new.broker_id,v_payload);
+ for r in select * from public.workflow_rules where is_enabled and event_key=v_event loop
+  if (r.conditions->>'to_status' is null or r.conditions->>'to_status'=v_payload->>'to_status')
+   and (r.conditions->>'to_stage' is null or r.conditions->>'to_stage'=v_payload->>'to_stage')
+   and r.action_key in ('create_task','log_only') then
+   if r.action_key='create_task' then
+    v_task_title:=coalesce(nullif(r.conditions->>'task_title',''),r.name);
+    v_priority:=case when r.conditions->>'priority' in ('low','normal','high','urgent') then r.conditions->>'priority' else 'normal' end;
+    v_due_hours:=case when coalesce(r.conditions->>'due_hours','') ~ '^[0-9]{1,4}$' then greatest(1,least((r.conditions->>'due_hours')::integer,720)) else 24 end;
+    insert into public.tasks(title,description,broker_id,terminal_id,created_by,priority,due_at)
+    values(v_task_title,coalesce(r.conditions->>'description',v_payload::text),new.broker_id,case when tg_table_name='terminals' then new.id else null end,auth.uid(),v_priority,now()+make_interval(hours=>v_due_hours));
+   end if;
+  end if;
+ end loop;
+ update public.workflow_events set processed_at=now() where event_key=v_event and entity_type=tg_table_name and entity_id=new.id and processed_at is null;
+ return new;
+end $$;
+revoke all on function private.apply_workflow_event() from public,anon,authenticated;
