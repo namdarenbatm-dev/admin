@@ -171,8 +171,6 @@ renderBrokers();
   if(error||!data||!data.is_active){await client.auth.signOut();showGate('پروفایل فعال برای این حساب پیدا نشد.');return}
   let profile=data;
   if(profile.role==='viewer'){
-   const {error:bootError}=await client.rpc('bootstrap_first_admin');
-   if(!bootError){const refreshed=await client.from('profiles').select('id,full_name,role,is_active').eq('id',session.user.id).single();if(refreshed.data)profile=refreshed.data;}
   }
   window.sniProfile=profile;gate.style.display='none';sessionBar.style.display='flex';document.getElementById('sniSessionEmail').textContent=session.user.email+' · '+profile.role;
   await loadBrokerData();
@@ -207,5 +205,6 @@ renderBrokers();
  };
 })();
 </script>
-<script src="./operations.js?v=1"></script>
+<script src="./operations.js?v=2"></script>
+<script src="./extended.js?v=1"></script>
 </body></html>
