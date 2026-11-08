@@ -336,3 +336,105 @@ create policy "audit insert authenticated" on public.audit_logs for insert to au
 grant usage on schema public to authenticated;
 grant select,insert,update,delete on all tables in schema public to authenticated;
 grant usage,select on all sequences in schema public to authenticated;
+
+-- Row-level scope enforcement: broker users see only their own broker data;
+-- regional managers see records belonging to their assigned region.
+create or replace function public.can_access_broker(p_broker_id uuid)
+returns boolean language sql stable security definer set search_path=public
+as $$
+  select coalesce(
+    public.current_role() in ('super_admin','sales_manager','operations','bi_analyst')
+    or exists (
+      select 1 from public.profiles p
+      left join public.brokers b on b.id=p_broker_id
+      where p.id=auth.uid() and p.is_active and (
+        (p.role='broker' and p.broker_id=p_broker_id)
+        or (p.role='regional_manager' and p.region is not null and b.region_id in
+          (select r.id from public.regions r where r.name=p.region))
+      )
+    ),false)
+$$;
+
+-- Replace broad read policies with scoped policies.
+do $$ declare t text; begin
+  foreach t in array array['regions','brokers','merchants','sales_points','terminals','leads','targets','commission_rules','commission_ledger','daily_transaction_metrics','tasks','workflow_rules','terminal_status_history'] loop
+    execute format('drop policy if exists %I_read on public.%I',t,t);
+    execute format('drop policy if exists %I_write on public.%I',t,t);
+  end loop;
+end $$;
+
+create policy regions_scoped_read on public.regions for select to authenticated
+using (public.current_role() in ('super_admin','sales_manager','operations','bi_analyst')
+  or name=(select p.region from public.profiles p where p.id=auth.uid()));
+create policy regions_admin_write on public.regions for all to authenticated
+using (public.current_role() in ('super_admin','sales_manager'))
+with check (public.current_role() in ('super_admin','sales_manager'));
+
+create policy brokers_scoped_read on public.brokers for select to authenticated
+using (public.can_access_broker(id));
+create policy brokers_manager_write on public.brokers for all to authenticated
+using (public.current_role() in ('super_admin','sales_manager','regional_manager','operations'))
+with check (public.current_role() in ('super_admin','sales_manager','regional_manager','operations'));
+
+create policy merchants_scoped_read on public.merchants for select to authenticated
+using (public.current_role() in ('super_admin','sales_manager','operations','bi_analyst')
+  or exists(select 1 from public.terminals t where t.merchant_id=merchants.id and public.can_access_broker(t.broker_id)));
+create policy merchants_manager_write on public.merchants for all to authenticated
+using (public.can_manage()) with check (public.can_manage());
+
+create policy sales_points_scoped_read on public.sales_points for select to authenticated
+using (public.can_access_broker(broker_id));
+create policy sales_points_manager_write on public.sales_points for all to authenticated
+using (public.can_manage()) with check (public.can_manage());
+
+create policy terminals_scoped_read on public.terminals for select to authenticated
+using (public.current_role() in ('super_admin','sales_manager','operations','bi_analyst') or public.can_access_broker(broker_id));
+create policy terminals_manager_write on public.terminals for all to authenticated
+using (public.can_manage()) with check (public.can_manage());
+
+create policy terminal_history_scoped_read on public.terminal_status_history for select to authenticated
+using (exists(select 1 from public.terminals t where t.id=terminal_id and
+  (public.current_role() in ('super_admin','sales_manager','operations','bi_analyst') or public.can_access_broker(t.broker_id))));
+create policy terminal_history_manager_write on public.terminal_status_history for all to authenticated
+using (public.can_manage()) with check (public.can_manage());
+
+create policy leads_scoped_read on public.leads for select to authenticated
+using (public.current_role() in ('super_admin','sales_manager','operations','bi_analyst') or public.can_access_broker(broker_id));
+create policy leads_manager_write on public.leads for all to authenticated
+using (public.can_manage()) with check (public.can_manage());
+
+create policy targets_scoped_read on public.targets for select to authenticated
+using (public.current_role() in ('super_admin','sales_manager','operations','bi_analyst') or public.can_access_broker(broker_id));
+create policy targets_manager_write on public.targets for all to authenticated
+using (public.can_manage()) with check (public.can_manage());
+
+create policy commission_rules_read on public.commission_rules for select to authenticated
+using (public.current_role() in ('super_admin','sales_manager','operations','bi_analyst'));
+create policy commission_rules_admin_write on public.commission_rules for all to authenticated
+using (public.current_role() in ('super_admin','sales_manager'))
+with check (public.current_role() in ('super_admin','sales_manager'));
+
+create policy commission_ledger_scoped_read on public.commission_ledger for select to authenticated
+using (public.current_role() in ('super_admin','sales_manager','operations','bi_analyst') or public.can_access_broker(broker_id));
+create policy commission_ledger_manager_write on public.commission_ledger for all to authenticated
+using (public.current_role() in ('super_admin','sales_manager'))
+with check (public.current_role() in ('super_admin','sales_manager'));
+
+create policy transaction_metrics_scoped_read on public.daily_transaction_metrics for select to authenticated
+using (exists(select 1 from public.terminals t where t.id=terminal_id and
+  (public.current_role() in ('super_admin','sales_manager','operations','bi_analyst') or public.can_access_broker(t.broker_id))));
+create policy transaction_metrics_ops_write on public.daily_transaction_metrics for all to authenticated
+using (public.current_role() in ('super_admin','sales_manager','operations'))
+with check (public.current_role() in ('super_admin','sales_manager','operations'));
+
+create policy tasks_scoped_read on public.tasks for select to authenticated
+using (assigned_to=auth.uid() or created_by=auth.uid() or public.can_manage());
+create policy tasks_manager_write on public.tasks for all to authenticated
+using (public.can_manage() or assigned_to=auth.uid())
+with check (public.can_manage() or assigned_to=auth.uid());
+
+create policy workflow_rules_admin_read on public.workflow_rules for select to authenticated
+using (public.current_role() in ('super_admin','sales_manager','operations'));
+create policy workflow_rules_admin_write on public.workflow_rules for all to authenticated
+using (public.current_role() in ('super_admin','sales_manager'))
+with check (public.current_role() in ('super_admin','sales_manager'));
