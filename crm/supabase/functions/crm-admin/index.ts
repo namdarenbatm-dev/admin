@@ -1,7 +1,7 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 
 const cors = {
-  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Origin": "https://namdarenbatm-dev.github.io",
   "Access-Control-Allow-Headers": "authorization, apikey, content-type, x-client-info",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
@@ -76,7 +76,7 @@ Deno.serve(async (req: Request) => {
     }
     const [configRes, peopleRes, purchasesRes] = await Promise.all([
       admin.from("reward_model_config").select("config,version,assumptions").eq("id", 1).single(),
-      admin.from("reward_participants").select("*").eq("is_active", true).limit(10000),
+      admin.from("reward_participants").select("*").limit(10000),
       admin.from("reward_first_purchases").select("*").lte("purchased_at", end).limit(10000),
     ]);
     if (configRes.error || peopleRes.error || purchasesRes.error) throw new Error(configRes.error?.message || peopleRes.error?.message || purchasesRes.error?.message);
@@ -96,12 +96,13 @@ Deno.serve(async (req: Request) => {
     const ledger: any[] = [];
     const add = (code: string, payee: string, qty: unknown, source: string | null = null) => {
       const q = int(qty); if (!q) return;
-      const basket = ["P_REG","P_TARGET","REF_PARTNER","OLD_REG_PARTNER","NEW_REG_PARTNER"].includes(code) ? "partner" : "agent";
+      const basket = ["P_REG","P_TARGET"].includes(code) ? "partner" : "agent";
       const group = code.includes("REG") ? "reg" : code.includes("TARGET") ? "target" : "referral";
       ledger.push({ reward_code: code, payee_id: payee, source_id: source, basket, group_key: group, quantity: q, rate: rates[code], amount: amount(q, rates[code]) });
     };
     const issues: string[] = [];
-    for (const person of people) {
+    const activePeople = people.filter((x:any)=>x.is_active);
+    for (const person of activePeople) {
       if (person.target_devices > person.reg_devices) issues.push("Target exceeds registered devices: " + person.name);
       if (person.participant_type === "partner") {
         add("P_REG", person.id, person.reg_devices);
@@ -110,7 +111,7 @@ Deno.serve(async (req: Request) => {
         add("A_REG", person.id, person.reg_devices);
         add("A_TARGET", person.id, person.target_devices);
         const partner = nearestPartner(byId, person);
-        if (partner) add(person.referrer_id === partner.id ? "NEW_REG_PARTNER" : "OLD_REG_PARTNER", partner.id, person.reg_devices, person.id);
+        if (partner?.is_active) add(person.referrer_id === partner.id ? "NEW_REG_PARTNER" : "OLD_REG_PARTNER", partner.id, person.reg_devices, person.id);
         const fp = purchaseByAgent.get(person.id);
         if (fp && fp.devices > person.reg_devices) issues.push("First purchase exceeds registered devices: " + person.name);
       }
@@ -120,30 +121,41 @@ Deno.serve(async (req: Request) => {
       if (referralSeen.has(fp.participant_id)) { issues.push("Duplicate first purchase event: " + fp.participant_id); continue; }
       referralSeen.add(fp.participant_id);
       const agent = byId.get(fp.participant_id);
-      if (!agent || agent.participant_type !== "agent" || !agent.referrer_id) continue;
+      if (!agent || !agent.is_active || agent.participant_type !== "agent" || !agent.referrer_id) continue;
       if (!agent.registration_completed || !agent.docs_approved || int(fp.devices) < 1) continue;
       const referrer = byId.get(agent.referrer_id);
       if (!referrer) { issues.push("Missing referrer for: " + agent.name); continue; }
+      if (!referrer.is_active) continue;
       add(referrer.participant_type === "partner" ? "REF_PARTNER" : "REF_AGENT", referrer.id, fp.devices, agent.id);
     }
     if (issues.length) return json({ error: "Data validation failed", issues }, 422);
 
-    const partnerDevices = people.filter((x: any) => x.participant_type === "partner").reduce((s: number,x: any)=>s+int(x.reg_devices),0);
-    const agentDevices = people.filter((x: any) => x.participant_type === "agent").reduce((s: number,x: any)=>s+int(x.reg_devices),0);
+    const partnerDevices = activePeople.filter((x: any) => x.participant_type === "partner").reduce((s: number,x: any)=>s+int(x.reg_devices),0);
+    const agentDevices = activePeople.filter((x: any) => x.participant_type === "agent").reduce((s: number,x: any)=>s+int(x.reg_devices),0);
     const partnerPool = money(p.budget) * partnerDevices;
     const agentPool = agentBudget * agentDevices;
+    if (money(p.budget)<=0 || agentBudget<=0 || Object.values(rates).every((x:any)=>x<=0)) return json({error:"بودجه و نرخ‌های مصوب هر دو سبد باید پیش از محاسبه ثبت شوند."},422);
     const partnerCommitted = ledger.filter(x=>x.basket==="partner").reduce((s,x)=>s+x.amount,0);
     const agentCommitted = ledger.filter(x=>x.basket==="agent").reduce((s,x)=>s+x.amount,0);
     const total = ledger.reduce((s,x)=>s+x.amount,0);
     const designOk = agentRateTotal === agentBudget;
     const partnerOk = partnerCommitted <= partnerPool;
     const agentOk = agentCommitted <= agentPool;
+    const referralEntries = ledger.filter(x=>["REF_AGENT","REF_PARTNER"].includes(x.reward_code));
+    const referralOnceOk = referralEntries.length === new Set(referralEntries.map((x:any)=>x.source_id)).size;
+    const firstPurchaseUniqueOk = purchases.length === new Set(purchases.map((x:any)=>x.participant_id)).size;
+    const playerSum = Object.values(ledger.reduce((a:any,x:any)=>{a[x.payee_id]=(a[x.payee_id]||0)+x.amount;return a},{})).reduce((s:any,x:any)=>s+x,0);
+    const basketSum = Object.values(ledger.reduce((a:any,x:any)=>{a[x.basket]=(a[x.basket]||0)+x.amount;return a},{})).reduce((s:any,x:any)=>s+x,0);
+    const groupSum = Object.values(ledger.reduce((a:any,x:any)=>{a[x.group_key]=(a[x.group_key]||0)+x.amount;return a},{})).reduce((s:any,x:any)=>s+x,0);
+    const reconciliationOk = total===playerSum && playerSum===basketSum && basketSum===groupSum;
+    const dataOk = issues.length===0;
     const totals = {
       participants: people.length, partnerDevices, agentDevices, ledgerLines: ledger.length, total,
       partner: { pool: partnerPool, committed: partnerCommitted, remaining: partnerPool-partnerCommitted },
       agent: { pool: agentPool, committed: agentCommitted, remaining: agentPool-agentCommitted },
-      controls: { rate_design: designOk, partner_budget: partnerOk, agent_budget: agentOk, data_reconciliation: true },
-      all_ok: designOk && partnerOk && agentOk,
+      controls: { reconciliation: reconciliationOk, partner_budget_sufficient: partnerOk, agent_budget_sufficient: agentOk, referral_paid_once: referralOnceOk, no_duplicate_first_purchase: firstPurchaseUniqueOk, six_rates_match_agent_budget: designOk, input_data_valid: dataOk },
+      reconciliation: { ledger_sum: total, player_sum: playerSum, basket_sum: basketSum, group_sum: groupSum },
+      all_ok: reconciliationOk && partnerOk && agentOk && referralOnceOk && firstPurchaseUniqueOk && designOk && dataOk,
       assumptions: configRes.data.assumptions,
       note: "مدل منبع بر اساس تعداد تجمعی دستگاه‌های ثبت‌شده اجرا شده است؛ تاریخ دوره، بازه گزارش و نسخه محاسبه را مشخص می‌کند و به‌تنهایی تعدادها را دوره‌ای نمی‌کند."
     };
