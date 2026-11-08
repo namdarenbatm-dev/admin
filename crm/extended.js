@@ -1,7 +1,7 @@
 /* SNI CRM extended modules: reward engine, invitations and workflow events */
 (()=> {
 'use strict';
-const wait=()=>new Promise((resolve,reject)=>{let n=0;const t=setInterval(()=>{if(window.sniClient&&window.sniProfile){clearInterval(t);resolve()}else if(++n>100){clearInterval(t);reject(new Error('session not ready'))}},200)});
+const wait=()=>{if(window.sniClient&&window.sniProfile)return Promise.resolve();return new Promise(resolve=>window.addEventListener('sni:authenticated',()=>{if(window.sniClient&&window.sniProfile)resolve()},{once:true}))};
 const $=(s,r=document)=>r.querySelector(s);
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const fa=n=>Number(n||0).toLocaleString('fa-IR');
