@@ -92,7 +92,7 @@ async function importPage(){
     if(vals.every(v=>String(v).trim()===''))return;
     const rowNo=i+2,o={};head.forEach((k,j)=>o[k]=String(vals[j]??'').trim());
     if(!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(o.terminal_id||'')){errors.push('ردیف '+rowNo+': شناسه پایانه UUID معتبر نیست.');return}
-    if(!/^\\d{4}-\\d{2}-\\d{2}$/.test(o.metric_date||'')||Number.isNaN(Date.parse(o.metric_date))){errors.push('ردیف '+rowNo+': تاریخ باید به شکل YYYY-MM-DD باشد.');return}
+    const dateParts=(o.metric_date||'').split('-').map(Number),validDate=/^\\d{4}-\\d{2}-\\d{2}$/.test(o.metric_date||'')&&dateParts.length===3&&new Date(Date.UTC(dateParts[0],dateParts[1]-1,dateParts[2])).toISOString().slice(0,10)===o.metric_date;if(!validDate){errors.push('ردیف '+rowNo+': تاریخ معتبر باید به شکل YYYY-MM-DD باشد.');return}
     const count=Number(o.transaction_count),amount=Number(o.transaction_amount),fee=Number(o.fee_amount);
     if(!Number.isInteger(count)||count<0||!Number.isFinite(amount)||amount<0||!Number.isFinite(fee)||fee<0){errors.push('ردیف '+rowNo+': مقادیر تعداد، مبلغ و کارمزد باید عدد نامنفی باشند.');return}
     const key=o.terminal_id+'|'+o.metric_date;if(seen.has(key)){errors.push('ردیف '+rowNo+': ترکیب پایانه و تاریخ در فایل تکراری است.');return}seen.add(key);
