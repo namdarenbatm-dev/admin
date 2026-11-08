@@ -240,3 +240,39 @@ create index if not exists idx_reward_ledger_source on public.reward_ledger(sour
 create index if not exists idx_reward_config_updated_by on public.reward_model_config(updated_by);
 create index if not exists idx_workflow_events_broker on public.workflow_events(broker_id);
 notify pgrst,'reload schema';
+
+
+-- Follow-up fix: history must be inserted AFTER the terminal row exists.
+-- Timestamp fields are still assigned in the BEFORE trigger.
+create or replace function public.capture_terminal_status()
+returns trigger language plpgsql security definer
+set search_path=public,private,pg_temp
+as $$
+begin
+ if new.lifecycle_status='installed' and new.installed_at is null then new.installed_at=now(); end if;
+ if new.lifecycle_status='active' and new.first_transaction_at is null then new.first_transaction_at=now(); end if;
+ return new;
+end $$;
+revoke all on function public.capture_terminal_status() from public,anon,authenticated;
+
+create or replace function private.write_terminal_status_history()
+returns trigger language plpgsql security definer
+set search_path=public,private,pg_temp
+as $$
+begin
+ if tg_op='INSERT' then
+  insert into public.terminal_status_history(terminal_id,from_status,to_status,changed_by,note)
+  values(new.id,null,new.lifecycle_status,auth.uid(),'ایجاد پایانه');
+ elsif old.lifecycle_status is distinct from new.lifecycle_status then
+  insert into public.terminal_status_history(terminal_id,from_status,to_status,changed_by)
+  values(new.id,old.lifecycle_status,new.lifecycle_status,auth.uid());
+ end if;
+ return new;
+end $$;
+revoke all on function private.write_terminal_status_history() from public,anon,authenticated;
+drop trigger if exists terminals_status_history on public.terminals;
+drop trigger if exists terminals_status_timestamps on public.terminals;
+create trigger terminals_status_timestamps before insert or update of lifecycle_status on public.terminals
+for each row execute function public.capture_terminal_status();
+create trigger terminals_status_history after insert or update of lifecycle_status on public.terminals
+for each row execute function private.write_terminal_status_history();
