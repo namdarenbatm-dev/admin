@@ -276,3 +276,13 @@ create trigger terminals_status_timestamps before insert or update of lifecycle_
 for each row execute function public.capture_terminal_status();
 create trigger terminals_status_history after insert or update of lifecycle_status on public.terminals
 for each row execute function private.write_terminal_status_history();
+
+-- Audit all reward model and calculation records.
+do $$
+declare t text;
+begin
+ foreach t in array array['reward_model_config','reward_participants','reward_first_purchases','reward_calculation_runs','reward_ledger'] loop
+  execute format('drop trigger if exists %I_audit on public.%I',t,t);
+  execute format('create trigger %I_audit after insert or update or delete on public.%I for each row execute function public.audit_row_change()',t,t);
+ end loop;
+end $$;
