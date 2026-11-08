@@ -29,6 +29,10 @@ The CRM is deployed separately from the existing root website. The root `index.h
 
 The default rate configuration is copied from the reference app's documented default model. All rates remain editable and versioned in `reward_model_config`.
 
+## Transaction and commission boundaries
+- Transaction data is imported from validated CSV files; a live PSP transaction API was intentionally excluded from this release.
+- Commission rules and the commission ledger are available for configuration and record management. Automatic commission calculation/settlement is intentionally not activated until the business-approved basis, rate type, and payout formula are supplied; no financial formula is assumed.
+
 ## Period semantics
 The reference model stores cumulative registered-device counts, not per-month registration deltas. For that reason, calculation dates label a snapshot/reporting period; they do not transform cumulative counts into period-only counts. First-purchase events are included up to the run end date. A period-specific payout model requires dated registration and target-device movements.
 
@@ -45,4 +49,4 @@ Both functions verify the caller's Supabase session and role on the server. Secr
 - Edge Function source is versioned under `crm/supabase/functions/`.
 - The frontend uses only the publishable key; never put a secret/service-role key in the repository.
 - The Supabase Auth leaked-password protection setting remains a dashboard-level action. Enable it under Authentication → Settings → Password Security.
-- Browser end-to-end testing and SMTP delivery confirmation are still required before production sign-off.
+- Unauthenticated browser smoke tests passed. Authenticated end-to-end testing, Supabase Auth URL/password-security configuration, and SMTP invitation-delivery confirmation are still required before production sign-off.
