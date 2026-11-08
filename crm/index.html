@@ -169,6 +169,10 @@ renderBrokers();
   if(!session){showGate();return}
   const {data,error}=await client.from('profiles').select('id,full_name,role,is_active').eq('id',session.user.id).maybeSingle();
   if(error||!data||!data.is_active){await client.auth.signOut();showGate('برای این حساب پروفایل فعال CRM تعریف نشده است. مدیر سامانه باید رکورد profiles را ایجاد یا فعال کند.');return}
+  if(data.role==='viewer'){
+   const {error:bootError}=await client.rpc('bootstrap_first_admin');
+   if(!bootError){const refreshed=await client.from('profiles').select('id,full_name,role,is_active').eq('id',session.user.id).single();if(refreshed.data)data=refreshed.data;}
+  }
   window.sniProfile=data;gate.style.display='none';sessionBar.style.display='flex';document.getElementById('sniSessionEmail').textContent=session.user.email+' · '+data.role;
   await loadBrokerData();
  };
