@@ -15,7 +15,7 @@ commission_rules:[['name','نام قاعده','text',1],['metric','شاخص مح
 commission_ledger:[['broker_id','شناسه کارگزار','text',1],['rule_id','شناسه قاعده'],['period_start','شروع دوره','date',1],['period_end','پایان دوره','date',1],['basis_value','مبنای محاسبه','number'],['amount','مبلغ پورسانت','number'],['status','وضعیت','select',1,['calculated','approved','paid','reversed']]],
 daily_transaction_metrics:[['terminal_id','شناسه پایانه','text',1],['metric_date','تاریخ آمار','date',1],['transaction_count','تعداد تراکنش','number'],['transaction_amount','مبلغ تراکنش','number'],['fee_amount','کارمزد','number'],['source','منبع داده']],
 tasks:[['title','عنوان وظیفه','text',1],['description','شرح','textarea'],['assigned_to','شناسه کاربر مسئول'],['broker_id','شناسه کارگزار'],['terminal_id','شناسه پایانه'],['due_at','مهلت انجام','datetime-local'],['priority','اولویت','select',1,['low','normal','high','urgent']],['status','وضعیت','select',1,['open','in_progress','done','cancelled']]],
-workflow_rules:[['name','نام قاعده','text',1],['event_key','رویداد','text',1],['conditions','شرایط JSON','textarea'],['action_key','اقدام','text',1],['is_enabled','فعال','checkbox']],
+workflow_rules:[['name','نام قاعده','text',1],['event_key','رویداد','select',1,['terminal.status_changed','lead.stage_changed']],['conditions','شرایط JSON','textarea'],['action_key','اقدام','select',1,['create_task','log_only']],['is_enabled','فعال','checkbox']],
 profiles:[['full_name','نام کاربر','text',1],['phone','تلفن'],['role','نقش','select',1,['super_admin','sales_manager','regional_manager','broker','bi_analyst','operations','viewer']],['region','منطقه'],['broker_id','شناسه کارگزار'],['is_active','حساب فعال','checkbox']]
 };
 const configs={
