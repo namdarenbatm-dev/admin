@@ -438,3 +438,45 @@ using (public.current_role() in ('super_admin','sales_manager','operations'));
 create policy workflow_rules_admin_write on public.workflow_rules for all to authenticated
 using (public.current_role() in ('super_admin','sales_manager'))
 with check (public.current_role() in ('super_admin','sales_manager'));
+
+
+-- Auth bootstrap: create a profile automatically for each Auth user.
+create or replace function public.handle_new_auth_user()
+returns trigger language plpgsql security definer set search_path=public,pg_temp
+as $$
+begin
+  insert into public.profiles(id,full_name,phone,role,is_active)
+  values(new.id,coalesce(nullif(new.raw_user_meta_data->>'full_name',''),split_part(coalesce(new.email,'کاربر'),'@',1)),new.phone,'viewer',true)
+  on conflict(id) do nothing;
+  return new;
+end $$;
+revoke all on function public.handle_new_auth_user() from public,anon,authenticated;
+drop trigger if exists on_auth_user_created_sni on auth.users;
+create trigger on_auth_user_created_sni after insert on auth.users
+for each row execute function public.handle_new_auth_user();
+
+-- One-time bootstrap for the first administrator; available only to signed-in users.
+create or replace function public.bootstrap_first_admin()
+returns boolean language plpgsql security definer set search_path=public,pg_temp
+as $$
+begin
+  if auth.uid() is null then raise exception 'Authentication required'; end if;
+  if exists(select 1 from public.profiles where role='super_admin') then raise exception 'An administrator is already configured'; end if;
+  update public.profiles set role='super_admin',updated_at=now() where id=auth.uid() and is_active=true;
+  if not found then raise exception 'Active profile not found'; end if;
+  return true;
+end $$;
+revoke all on function public.bootstrap_first_admin() from public,anon;
+grant execute on function public.bootstrap_first_admin() to authenticated;
+
+-- Restrict internal trigger helpers and role-check functions from anonymous execution.
+alter function public.touch_updated_at() set search_path=public,pg_temp;
+revoke all on function public.audit_row_change() from public,anon,authenticated;
+revoke all on function public.capture_terminal_status() from public,anon,authenticated;
+revoke all on function public.current_role() from public,anon;
+revoke all on function public.can_manage() from public,anon;
+revoke all on function public.can_access_broker(uuid) from public,anon;
+grant execute on function public.current_role() to authenticated;
+grant execute on function public.can_manage() to authenticated;
+grant execute on function public.can_access_broker(uuid) to authenticated;
+drop policy if exists "audit insert authenticated" on public.audit_logs;
